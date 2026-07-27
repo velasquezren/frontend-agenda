@@ -20,7 +20,7 @@ import { Spinner } from '../../ui/spinner';
           <div class="mb-3.5 flex size-14 items-center justify-center rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-900/5">
             <app-logo [tamano]="36" etiqueta="Clínica Montalvo" class="text-marca-600" />
           </div>
-          <h1 class="text-xl font-bold tracking-tight text-slate-900">Agenda Médica</h1>
+          <h1 class="text-xl font-bold tracking-tight text-slate-900">Agenda de Sesiones</h1>
           <p class="mt-1 text-xs font-medium text-slate-500 uppercase tracking-wider">Clínica Montalvo</p>
         </div>
 

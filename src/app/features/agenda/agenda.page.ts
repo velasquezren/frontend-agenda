@@ -25,6 +25,7 @@ import { Logo } from '../../ui/logo';
 import { Tab, Tabs } from '../../ui/tabs';
 import { CitaDialog, RangoInicial } from './cita-dialog';
 import { ESTADOS } from './estado';
+import { ReporteDialog } from './reporte-dialog';
 
 /** Id de la pestaña que superpone las agendas de todos los médicos. */
 const TODOS = 'todos';
@@ -40,14 +41,14 @@ type Vista = 'timeGridWeek' | 'timeGridDay';
 
 @Component({
   selector: 'app-agenda',
-  imports: [FullCalendarModule, CitaDialog, Btn, Tabs, Logo],
+  imports: [FullCalendarModule, CitaDialog, ReporteDialog, Btn, Tabs, Logo],
   template: `
     <div class="min-h-dvh bg-slate-50">
       <header class="border-b border-slate-200 bg-white">
         <div class="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-2.5">
           <div class="flex items-center gap-2.5">
             <app-logo [tamano]="26" class="text-marca-600" />
-            <h1 class="text-sm font-semibold tracking-tight text-slate-900">Agenda</h1>
+            <h1 class="text-sm font-semibold tracking-tight text-slate-900">Agenda de Sesiones</h1>
           </div>
 
           <div class="flex items-center gap-3">
@@ -160,6 +161,14 @@ type Vista = 'timeGridWeek' | 'timeGridDay';
 
               <button
                 type="button"
+                appBtn="suave"
+                (click)="reporteAbierto.set(true)"
+              >
+                Exportar reporte
+              </button>
+
+              <button
+                type="button"
                 appBtn
                 [disabled]="modoTodos()"
                 [title]="modoTodos() ? 'Elige un médico para agendar' : ''"
@@ -209,6 +218,12 @@ type Vista = 'timeGridWeek' | 'timeGridDay';
               (guardado)="refrescar()"
             />
           }
+
+          <app-reporte-dialog
+            [abierto]="reporteAbierto()"
+            [medicos]="medicos()"
+            (cerrar)="reporteAbierto.set(false)"
+          />
         }
       </main>
     </div>
@@ -229,6 +244,7 @@ export class AgendaPage {
   protected readonly tituloVista = signal('');
 
   protected readonly dialogoAbierto = signal(false);
+  protected readonly reporteAbierto = signal(false);
   protected readonly citaSel = signal<CitaEvento | null>(null);
   protected readonly rangoSel = signal<RangoInicial | null>(null);
 
