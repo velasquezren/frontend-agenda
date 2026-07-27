@@ -239,7 +239,7 @@ export class AgendaPage {
   protected readonly medicos = signal<Medico[]>([]);
   protected readonly tabSel = signal('');
   protected readonly cargando = signal(true);
-  protected readonly verCanceladas = signal(false);
+  protected readonly verCanceladas = signal(true);
   protected readonly vista = signal<Vista>('timeGridWeek');
   protected readonly tituloVista = signal('');
 
