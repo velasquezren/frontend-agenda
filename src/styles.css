@@ -1,3 +1,105 @@
-/* You can add global styles to this file, and also import other style files */
-
 @import 'tailwindcss';
+
+/* FullCalendar v7: base + tema. Sin esto el calendario sale sin estilos. */
+@import 'fullcalendar/skeleton.css';
+@import 'fullcalendar/themes/classic/theme.css';
+@import 'fullcalendar/themes/classic/palette.css';
+
+/* ---------------------------------------------------------------------------
+   Tokens de marca. Cambiar la escala `marca` es todo lo que hace falta para
+   rebrandear la app: los componentes de src/app/ui/ solo usan estos nombres.
+   --------------------------------------------------------------------------- */
+@theme {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, sans-serif;
+
+  /* Verde de Clínica Montalvo: el 600 es el #006156 del logo y del CRM. */
+  --color-marca-50: #e6f0ef;
+  --color-marca-100: #cce1de;
+  --color-marca-200: #99c3bd;
+  --color-marca-300: #66a49b;
+  --color-marca-400: #33867a;
+  --color-marca-500: #007567;
+  --color-marca-600: #006156;
+  --color-marca-700: #004e45;
+  --color-marca-800: #003a34;
+  --color-marca-900: #002722;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-slate-50 font-sans text-slate-900 antialiased;
+  }
+
+  /*
+   * Un solo foco para toda la app. `outline` y no `box-shadow`: se dibuja
+   * siempre, aunque el elemento esté dentro de algo con overflow oculto.
+   */
+  :focus-visible {
+    outline: 2px solid var(--color-marca-600);
+    outline-offset: 2px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Movimiento: solo un fundido corto al abrir. Nada de escalados ni deslizamientos.
+   --------------------------------------------------------------------------- */
+@keyframes agenda-fundido {
+  from {
+    opacity: 0;
+  }
+}
+
+dialog[open],
+dialog[open]::backdrop,
+.agenda-toast {
+  animation: agenda-fundido 120ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  dialog[open],
+  dialog[open]::backdrop,
+  .agenda-toast {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   FullCalendar: el tema `classic` es 100% variables CSS, asi que lo repintamos
+   con la paleta de la app en vez de pelearnos con sus clases (que van hasheadas).
+   La barra de navegacion propia vive en agenda.page.ts (`headerToolbar: false`).
+   --------------------------------------------------------------------------- */
+:root {
+  --fc-classic-primary: #0f172a;
+  --fc-classic-primary-foreground: #ffffff;
+
+  --fc-classic-highlight: #0f172a14;
+  --fc-classic-today: #0f172a08;
+  --fc-classic-now: #dc2626;
+
+  --fc-classic-background: #ffffff;
+  --fc-classic-foreground: #0f172a;
+  --fc-classic-faint-foreground: #94a3b8;
+  --fc-classic-muted-foreground: #64748b;
+  --fc-classic-border: #e2e8f0;
+  --fc-classic-strong-border: #cbd5e1;
+}
+
+/* Estados de cita, aplicados con la opcion `eventClass`. */
+.cita-cancelada {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+.cita-cumplida {
+  box-shadow: inset 2px 0 0 #059669;
+}
+
+.cita-no-asistio {
+  box-shadow: inset 2px 0 0 #d97706;
+}
