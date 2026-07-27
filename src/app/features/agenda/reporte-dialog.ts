@@ -252,19 +252,45 @@ export class ReporteDialog {
     const citas = this.citasFiltradas();
     if (citas.length === 0) return;
 
-    const encabezados = ['ID', 'Fecha', 'Hora Inicio', 'Hora Fin', 'Médico', 'Paciente', 'Estado', 'Notas'];
+    const encabezados = [
+      'ID Sesión',
+      'Fecha',
+      'Hora Inicio',
+      'Hora Fin',
+      'Duración (min)',
+      'Médico',
+      'Paciente',
+      'Estado',
+      'Notas',
+    ];
+
     const filas = citas.map((c) => {
       const inicio = new Date(c.start);
       const fin = new Date(c.end);
-      const fecha = inicio.toLocaleDateString('es-ES');
+      const fecha = inicio.toLocaleDateString('es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      });
       const horaIn = inicio.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
       const horaFin = fin.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+      const duracion = Math.round((fin.getTime() - inicio.getTime()) / 60000);
       const medico = this.obtenerNombreMedico(c.extendedProps.medicoId);
       const paciente = c.extendedProps.pacienteNombre;
       const estado = ESTADOS[c.extendedProps.estado].texto;
       const notas = (c.extendedProps.notas || '').replace(/"/g, '""');
 
-      return [c.extendedProps.citaId, fecha, horaIn, horaFin, `"${medico}"`, `"${paciente}"`, `"${estado}"`, `"${notas}"`].join(',');
+      return [
+        c.extendedProps.citaId,
+        fecha,
+        horaIn,
+        horaFin,
+        duracion,
+        `"${medico}"`,
+        `"${paciente}"`,
+        `"${estado}"`,
+        `"${notas}"`,
+      ].join(',');
     });
 
     const csvContent = '\uFEFF' + [encabezados.join(','), ...filas].join('\n');
@@ -286,33 +312,147 @@ export class ReporteDialog {
     const ventana = window.open('', '_blank');
     if (!ventana) return;
 
+    const total = citas.length;
+    const programadas = citas.filter((c) => c.extendedProps.estado === 'programada').length;
+    const cumplidas = citas.filter((c) => c.extendedProps.estado === 'cumplida').length;
+    const canceladas = citas.filter((c) => c.extendedProps.estado === 'cancelada').length;
+
     const htmlContent = `
       <!DOCTYPE html>
-      <html>
+      <html lang="es">
       <head>
+        <meta charset="utf-8">
         <title>Reporte de Sesiones Médicas - Clínica Montalvo</title>
         <style>
-          body { font-family: system-ui, -apple-system, sans-serif; padding: 20px; color: #0f172a; }
-          h1 { font-size: 18px; margin-bottom: 4px; color: #006156; }
-          p { font-size: 12px; color: #64748b; margin-top: 0; }
-          table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 12px; }
-          th { background: #f1f5f9; text-align: left; padding: 8px; border-bottom: 2px solid #cbd5e1; }
-          td { padding: 8px; border-bottom: 1px solid #e2e8f0; }
-          .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; background: #e2e8f0; }
-          @media print { body { padding: 0; } }
+          @page { size: A4 portrait; margin: 15mm; }
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            color: #0f172a;
+            background: #ffffff;
+            margin: 0;
+            padding: 24px;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 16px;
+            border-bottom: 3px solid #006156;
+            margin-bottom: 20px;
+          }
+          .brand { font-size: 22px; font-weight: 800; color: #006156; tracking: -0.5px; }
+          .sub-brand { font-size: 12px; color: #64748b; font-weight: 500; margin-top: 2px; }
+          .doc-title { text-align: right; }
+          .doc-title h2 { margin: 0; font-size: 16px; font-weight: 700; color: #0f172a; }
+          .doc-title p { margin: 3px 0 0 0; font-size: 11px; color: #64748b; }
+          
+          /* Métricas */
+          .metrics {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+          }
+          .card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 10px 12px;
+            text-align: center;
+          }
+          .card-val { font-size: 18px; font-weight: 700; color: #0f172a; }
+          .card-lbl { font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 600; margin-top: 2px; }
+
+          /* Tabla */
+          table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 10px; }
+          th {
+            background-color: #f1f5f9;
+            color: #334155;
+            font-weight: 700;
+            text-align: left;
+            padding: 9px 10px;
+            border-bottom: 2px solid #cbd5e1;
+            text-transform: uppercase;
+            font-size: 9.5px;
+            letter-spacing: 0.5px;
+          }
+          td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #e2e8f0;
+            color: #334155;
+          }
+          tr:nth-child(even) td { background-color: #fafafa; }
+          
+          /* Badges */
+          .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+          }
+          .badge-programada { background: #e0e7ff; color: #3730a3; }
+          .badge-cumplida { background: #d1fae5; color: #065f46; }
+          .badge-cancelada { background: #fef2f2; color: #991b1b; text-decoration: line-through; }
+          .badge-no_asistio { background: #fef3c7; color: #92400e; }
+
+          .footer {
+            margin-top: 30px;
+            padding-top: 12px;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: #94a3b8;
+          }
+
+          @media print {
+            body { padding: 0; }
+            .no-print { display: none; }
+          }
         </style>
       </head>
       <body>
-        <h1>Clínica Montalvo — Reporte de Sesiones Médicas</h1>
-        <p>Rango: ${this.fechaDesde()} a ${this.fechaHasta()} | Total de sesiones: ${citas.length}</p>
+        <div class="header">
+          <div>
+            <div class="brand">Clínica Montalvo</div>
+            <div class="sub-brand">Sistema de Agenda de Sesiones Médicas</div>
+          </div>
+          <div class="doc-title">
+            <h2>Reporte de Sesiones</h2>
+            <p>Período: ${this.fechaDesde()} al ${this.fechaHasta()}</p>
+          </div>
+        </div>
+
+        <div class="metrics">
+          <div class="card">
+            <div class="card-val">${total}</div>
+            <div class="card-lbl">Total Sesiones</div>
+          </div>
+          <div class="card">
+            <div class="card-val" style="color: #3730a3;">${programadas}</div>
+            <div class="card-lbl">Programadas</div>
+          </div>
+          <div class="card">
+            <div class="card-val" style="color: #065f46;">${cumplidas}</div>
+            <div class="card-lbl">Cumplidas</div>
+          </div>
+          <div class="card">
+            <div class="card-val" style="color: #991b1b;">${canceladas}</div>
+            <div class="card-lbl">Canceladas</div>
+          </div>
+        </div>
+
         <table>
           <thead>
             <tr>
-              <th>Fecha y Hora</th>
-              <th>Paciente</th>
-              <th>Médico</th>
-              <th>Estado</th>
-              <th>Notas</th>
+              <th style="width: 25%;">Fecha y Hora</th>
+              <th style="width: 25%;">Paciente</th>
+              <th style="width: 25%;">Médico</th>
+              <th style="width: 15%;">Estado</th>
+              <th style="width: 10%;">Notas</th>
             </tr>
           </thead>
           <tbody>
@@ -320,17 +460,24 @@ export class ReporteDialog {
               .map((c) => {
                 const inicio = new Date(c.start);
                 const fin = new Date(c.end);
-                const fecha = inicio.toLocaleDateString('es-ES');
+                const fecha = inicio.toLocaleDateString('es-ES', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                });
                 const horaIn = inicio.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
                 const horaFin = fin.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
                 const medico = this.obtenerNombreMedico(c.extendedProps.medicoId);
-                const estado = ESTADOS[c.extendedProps.estado].texto;
+                const st = c.extendedProps.estado;
+                const estadoTexto = ESTADOS[st].texto;
+                const badgeClass = `badge-${st}`;
+
                 return `
                 <tr>
-                  <td>${fecha} (${horaIn} - ${horaFin})</td>
+                  <td><strong>${fecha}</strong> (${horaIn} - ${horaFin})</td>
                   <td><strong>${c.extendedProps.pacienteNombre}</strong></td>
                   <td>${medico}</td>
-                  <td><span class="badge">${estado}</span></td>
+                  <td><span class="badge ${badgeClass}">${estadoTexto}</span></td>
                   <td>${c.extendedProps.notas || '-'}</td>
                 </tr>
               `;
@@ -338,6 +485,12 @@ export class ReporteDialog {
               .join('')}
           </tbody>
         </table>
+
+        <div class="footer">
+          <span>Generado automáticamente por el Sistema de Agenda de Sesiones</span>
+          <span>Fecha de emisión: ${new Date().toLocaleString('es-ES')}</span>
+        </div>
+
         <script>
           window.onload = function() { window.print(); };
         </script>
