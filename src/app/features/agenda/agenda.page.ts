@@ -306,6 +306,8 @@ export class AgendaPage {
     eventClass: (info) =>
       ESTADOS[(info.event.extendedProps as CitaEvento['extendedProps']).estado].clase,
     select: (info: DateSelectInfo) => this.abrirNueva(info.start, info.end),
+    dateClick: (info: { date: Date }) =>
+      this.abrirNueva(info.date, new Date(info.date.getTime() + 30 * 60000)),
     eventClick: (info: EventClickInfo) => this.abrirEdicion(info),
     eventDrop: (info: EventDropInfo) => void this.mover(info),
     eventResize: (info: EventResizeDoneInfo) => void this.mover(info),
@@ -401,7 +403,7 @@ export class AgendaPage {
   }
 
   protected abrirNueva(inicio: Date, fin: Date): void {
-    if (this.modoTodos()) return;
+    if (this.modoTodos() || this.dialogoAbierto()) return;
     this.citaSel.set(null);
     this.rangoSel.set({ inicio, fin });
     this.dialogoAbierto.set(true);
