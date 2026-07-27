@@ -421,18 +421,25 @@ export class AgendaPage {
         inicio: aLocalISO(e.start!),
         fin: aLocalISO(e.end!),
       });
-      this.toasts.ok('Cita movida.');
+      const horaStr = e.start
+        ? e.start.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })
+        : '';
+      this.toasts.ok(
+        horaStr
+          ? `Cita reprogramada para las ${horaStr}.`
+          : 'Cita reprogramada correctamente.',
+      );
     } catch (err) {
       info.revert();
       if (err instanceof HttpErrorResponse && err.status === 409) {
         const d = err.error?.detail as ConflictoDetalle | undefined;
         this.toasts.error(
           d
-            ? `Ese horario ya está ocupado por ${d.paciente}.`
-            : 'Ese horario ya está ocupado.',
+            ? `Conflicto de horario: ocupado por ${d.paciente}.`
+            : 'El horario seleccionado ya se encuentra ocupado.',
         );
       } else {
-        this.toasts.error('No se pudo mover la cita.');
+        this.toasts.error('No se pudo reubicar la cita.');
       }
     }
   }

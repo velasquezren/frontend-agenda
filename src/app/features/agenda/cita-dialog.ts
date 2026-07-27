@@ -51,7 +51,7 @@ const DURACIONES = [30, 45, 60, 90];
   template: `
     <app-dialog
       [abierto]="abierto()"
-      [titulo]="esEdicion() ? 'Editar cita' : 'Nueva cita'"
+      [titulo]="esEdicion() ? 'Editar cita médica' : 'Nueva cita médica'"
       [descripcion]="medico().nombre"
       tamano="lg"
       (cerrar)="cerrar.emit()"
@@ -63,18 +63,20 @@ const DURACIONES = [30, 45, 60, 90];
               {{ ESTADOS[c.extendedProps.estado].texto }}
             </app-badge>
             @if (c.extendedProps.serieId) {
-              <app-badge tono="marca">Parte de una serie</app-badge>
-              <span class="text-xs text-slate-500">Los cambios afectan solo a esta cita.</span>
+              <app-badge tono="marca">Serie recurrente</app-badge>
+              <span class="text-xs text-slate-500">Los cambios aplican únicamente a esta cita.</span>
             }
           </div>
         }
 
+        <!-- Selección de Paciente -->
         <app-paciente-picker
           [(paciente)]="paciente"
           [error]="errorPaciente()"
           idInput="cita-paciente"
         />
 
+        <!-- Selección de Fecha y Rango de Horario -->
         <div class="grid gap-4 sm:grid-cols-3">
           <app-field etiqueta="Fecha" para="cita-fecha" requerido>
             <input
@@ -87,7 +89,7 @@ const DURACIONES = [30, 45, 60, 90];
             />
           </app-field>
 
-          <app-field etiqueta="Inicio" para="cita-inicio" requerido>
+          <app-field etiqueta="Hora inicio" para="cita-inicio" requerido>
             <input
               appInput
               id="cita-inicio"
@@ -99,7 +101,7 @@ const DURACIONES = [30, 45, 60, 90];
             />
           </app-field>
 
-          <app-field etiqueta="Fin" para="cita-fin" [error]="errorHoras()" requerido>
+          <app-field etiqueta="Hora fin" para="cita-fin" [error]="errorHoras()" requerido>
             <input
               appInput
               id="cita-fin"
@@ -113,18 +115,18 @@ const DURACIONES = [30, 45, 60, 90];
           </app-field>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="text-xs text-slate-500">Duración</span>
-          <div class="inline-flex overflow-hidden rounded-md border border-slate-300">
-            @for (d of DURACIONES; track d; let primero = $first) {
+        <!-- Botonera interactiva de Duración -->
+        <div class="space-y-1.5">
+          <label class="block text-xs font-medium text-slate-600">Duración predefinida</label>
+          <div class="flex flex-wrap items-center gap-1.5">
+            @for (d of DURACIONES; track d) {
               <button
                 type="button"
-                class="h-8 px-2.5 text-xs"
+                class="h-8 rounded-xl border px-3 text-xs font-medium transition-all"
                 [class]="
-                  (duracion() === d
-                    ? 'bg-slate-900 font-medium text-white'
-                    : 'bg-white text-slate-600 hover:bg-slate-50') +
-                  (primero ? '' : ' border-l border-slate-300')
+                  duracion() === d
+                    ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
                 "
                 [attr.aria-pressed]="duracion() === d"
                 (click)="fijarDuracion(d)"
@@ -132,24 +134,25 @@ const DURACIONES = [30, 45, 60, 90];
                 {{ d }} min
               </button>
             }
+            @if (duracion() > 0 && !DURACIONES.includes(duracion())) {
+              <span class="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
+                Personalizado: {{ duracion() }} min
+              </span>
+            }
           </div>
-          @if (duracion() > 0 && !DURACIONES.includes(duracion())) {
-            <span class="text-xs text-slate-500">({{ duracion() }} min)</span>
-          }
         </div>
 
         @if (esEdicion()) {
-          <app-field etiqueta="Estado">
-            <div class="inline-flex overflow-hidden rounded-md border border-slate-300">
-              @for (e of ESTADOS_EDITABLES; track e; let primero = $first) {
+          <app-field etiqueta="Estado de la cita">
+            <div class="flex flex-wrap gap-1.5">
+              @for (e of ESTADOS_EDITABLES; track e) {
                 <button
                   type="button"
-                  class="h-9 px-3 text-sm"
+                  class="h-8.5 rounded-xl border px-3.5 text-xs font-medium transition-all"
                   [class]="
-                    (estado() === e
-                      ? 'bg-slate-900 font-medium text-white'
-                      : 'bg-white text-slate-600 hover:bg-slate-50') +
-                    (primero ? '' : ' border-l border-slate-300')
+                    estado() === e
+                      ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
                   "
                   [attr.aria-pressed]="estado() === e"
                   (click)="estado.set(e)"
@@ -160,30 +163,30 @@ const DURACIONES = [30, 45, 60, 90];
             </div>
           </app-field>
         } @else {
-          <div class="rounded-md border border-slate-200 p-4">
-            <label class="flex cursor-pointer items-center gap-2.5 text-sm font-medium text-slate-800">
+          <div class="rounded-2xl border border-slate-200/80 bg-slate-50/50 p-4 transition-all">
+            <label class="flex cursor-pointer items-center gap-2.5 text-sm font-medium text-slate-800 select-none">
               <input
                 type="checkbox"
-                class="size-3.5 accent-slate-900"
+                class="size-4 rounded accent-slate-900"
                 [checked]="recurrente()"
                 (change)="recurrente.set($any($event.target).checked)"
               />
-              Repetir cada semana
+              Repetir semanalmente (Serie)
             </label>
 
             @if (recurrente()) {
-              <div class="mt-4 space-y-4">
+              <div class="mt-4 space-y-4 pt-3 border-t border-slate-200/60">
                 <fieldset>
-                  <legend class="mb-1.5 block text-sm font-medium text-slate-700">Días</legend>
+                  <legend class="mb-2 block text-xs font-medium text-slate-600">Días de la semana</legend>
                   <div class="flex flex-wrap gap-1.5">
                     @for (d of DIAS; track d.iso) {
                       <button
                         type="button"
-                        class="size-9 rounded-md border text-sm"
+                        class="size-9 rounded-xl border text-xs font-semibold transition-all"
                         [class]="
                           dias().has(d.iso)
-                            ? 'border-slate-900 bg-slate-900 font-medium text-white'
-                            : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'
+                            ? 'border-slate-900 bg-slate-900 text-white shadow-sm ring-2 ring-slate-900/10'
+                            : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
                         "
                         [attr.aria-pressed]="dias().has(d.iso)"
                         [attr.aria-label]="d.nombre"
@@ -208,34 +211,55 @@ const DURACIONES = [30, 45, 60, 90];
                 </app-field>
 
                 @if (previsualizacion(); as n) {
-                  <p class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                    Se intentarán crear <strong class="text-slate-900">{{ n }}</strong> citas. Las
-                    fechas que choquen con otra cita del médico se omiten y se te avisa.
-                  </p>
+                  <div class="rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
+                    Se agendarán <strong class="font-bold text-slate-900">{{ n }}</strong> sesiones en total. Si alguna fecha presenta conflicto con otra cita, esa fecha será omitida de la serie.
+                  </div>
                 }
               </div>
             }
           </div>
         }
 
-        <app-field etiqueta="Notas" para="cita-notas" ayuda="Máximo 500 caracteres.">
+        <!-- Resumen interactivo en tiempo real -->
+        @if (paciente(); as p) {
+          <div class="flex items-center gap-3 rounded-xl border border-marca-200/80 bg-marca-50/50 p-3.5 text-xs text-slate-700">
+            <div class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-marca-600/10 text-marca-700">
+              <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <div class="leading-tight">
+              <span class="font-semibold text-slate-900">{{ p.nombre }}</span>
+              <span class="text-slate-500"> • {{ medico().nombre }}</span>
+              <p class="mt-0.5 font-medium text-marca-700">
+                {{ fecha() }} ({{ horaInicio() }} - {{ horaFin() }}) • {{ duracion() }} min
+              </p>
+            </div>
+          </div>
+        }
+
+        <app-field etiqueta="Notas adicionales" para="cita-notas" ayuda="Máximo 500 caracteres.">
           <textarea
             appInput
             id="cita-notas"
             rows="2"
             maxlength="500"
+            placeholder="Observaciones de la sesión médica..."
             [value]="notas()"
             (input)="notas.set($any($event.target).value)"
           ></textarea>
         </app-field>
 
         @if (error()) {
-          <p
-            class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+          <div
+            class="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-800"
             role="alert"
           >
-            {{ error() }}
-          </p>
+            <svg class="size-4 shrink-0 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span>{{ error() }}</span>
+          </div>
         }
       </form>
 
@@ -244,19 +268,19 @@ const DURACIONES = [30, 45, 60, 90];
           dialogFooter
           type="button"
           appBtn="peligro"
-          class="mr-auto"
+          class="mr-auto rounded-xl"
           [disabled]="guardando()"
           (click)="cancelarCita()"
         >
           Cancelar cita
         </button>
       }
-      <button dialogFooter type="button" appBtn="suave" (click)="cerrar.emit()">Cerrar</button>
-      <button dialogFooter type="submit" form="form-cita" appBtn [disabled]="guardando()">
+      <button dialogFooter type="button" appBtn="suave" class="rounded-xl" (click)="cerrar.emit()">Cerrar</button>
+      <button dialogFooter type="submit" form="form-cita" appBtn class="rounded-xl font-semibold shadow-sm" [disabled]="guardando()">
         @if (guardando()) {
           <app-spinner />
         }
-        {{ guardando() ? 'Guardando…' : 'Guardar' }}
+        {{ guardando() ? 'Guardando…' : 'Guardar Cita' }}
       </button>
     </app-dialog>
   `,
@@ -297,12 +321,12 @@ export class CitaDialog {
   });
 
   protected readonly errorHoras = computed(() =>
-    this.duracion() <= 0 ? 'Debe ser posterior al inicio.' : '',
+    this.duracion() <= 0 ? 'La hora de fin debe ser posterior a la de inicio.' : '',
   );
 
   protected readonly errorSerie = computed(() =>
     this.recurrente() && this.fechaHasta() && this.fechaHasta() < this.fecha()
-      ? 'Debe ser posterior a la fecha de la cita.'
+      ? 'La fecha límite debe ser posterior a la fecha de la cita.'
       : '',
   );
 
@@ -399,7 +423,7 @@ export class CitaDialog {
           estado: this.estado(),
           notas: this.notas() || null,
         });
-        this.toasts.ok('Cita actualizada.');
+        this.toasts.ok(`Cita de ${paciente.nombre} actualizada correctamente.`);
       } else {
         await this.crearNueva(paciente, inicio, fin);
       }
@@ -421,12 +445,12 @@ export class CitaDialog {
         fin,
         notas: this.notas() || null,
       });
-      this.toasts.ok('Cita creada.');
+      this.toasts.ok(`Cita agendada para ${paciente.nombre}.`);
       return;
     }
 
     if (this.dias().size === 0) {
-      throw new Error('Elige al menos un día de la semana.');
+      throw new Error('Selecciona al menos un día de la semana.');
     }
 
     const res = await this.api.crearSerie({
@@ -443,8 +467,8 @@ export class CitaDialog {
     const n = res.creadas.length;
     this.toasts.ok(
       res.conflictos.length
-        ? `${n} cita(s) creadas. ${res.conflictos.length} fecha(s) se omitieron porque el horario ya estaba ocupado.`
-        : `${n} cita(s) creadas.`,
+        ? `Se agendaron ${n} citas. ${res.conflictos.length} fecha(s) se omitieron por conflicto de horario.`
+        : `Serie de ${n} citas creada correctamente para ${paciente.nombre}.`,
     );
   }
 
@@ -453,13 +477,13 @@ export class CitaDialog {
     if (!cita || this.guardando()) return;
 
     const ok = await this.confirm.pedir({
-      titulo: '¿Cancelar esta cita?',
+      titulo: '¿Cancelar esta cita médica?',
       mensaje:
-        `Se marcará como cancelada y su horario volverá a quedar libre. ` +
+        `La cita se marcará como cancelada y su horario volverá a estar disponible en la agenda. ` +
         (cita.extendedProps.serieId
-          ? 'Solo se cancela esta fecha, no el resto de la serie.'
-          : 'La cita no se borra: queda en el historial.'),
-      textoOk: 'Sí, cancelar',
+          ? 'Solo afectará a esta fecha específica.'
+          : 'El registro se conserva en el historial.'),
+      textoOk: 'Sí, cancelar cita',
       peligro: true,
     });
     if (!ok) return;
@@ -467,7 +491,7 @@ export class CitaDialog {
     this.guardando.set(true);
     try {
       await this.api.cancelarCita(cita.extendedProps.citaId);
-      this.toasts.ok('Cita cancelada.');
+      this.toasts.ok('Cita cancelada correctamente.');
       this.guardado.emit();
       this.cerrar.emit();
     } catch (e) {
@@ -482,13 +506,13 @@ export class CitaDialog {
       if (e.status === 409) {
         const d = e.error?.detail as ConflictoDetalle | undefined;
         return d
-          ? `Ese horario ya está ocupado por ${d.paciente} (${new Date(d.inicio).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}).`
-          : 'Ese horario ya está ocupado.';
+          ? `Conflicto de horario: ocupado por ${d.paciente} (${new Date(d.inicio).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}).`
+          : 'El horario seleccionado ya se encuentra ocupado.';
       }
-      if (e.status === 403) return 'No tienes permiso para agendar con este médico.';
-      if (e.status === 0) return 'No hay conexión con el servidor.';
-      return 'No se pudo guardar. Intenta de nuevo.';
+      if (e.status === 403) return 'No dispones de permisos para agendar con este médico.';
+      if (e.status === 0) return 'Sin conexión con el servidor.';
+      return 'No se pudo guardar la cita. Intenta de nuevo.';
     }
-    return e instanceof Error ? e.message : 'No se pudo guardar.';
+    return e instanceof Error ? e.message : 'No se pudo guardar la cita.';
   }
 }
