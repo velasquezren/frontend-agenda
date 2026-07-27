@@ -16,9 +16,11 @@ export class InputCampo {
 
   protected readonly clases = computed(
     () =>
-      'block w-full rounded-md border bg-white px-3 py-2 text-sm text-slate-900 ' +
-      'placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 ' +
-      'disabled:text-slate-500 ' +
-      (this.invalido() ? 'border-red-400' : 'border-slate-300'),
+      'block w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm transition-all ' +
+      'placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500 ' +
+      'focus:outline-none focus:ring-2 focus:ring-marca-600/20 focus:border-marca-600 ' +
+      (this.invalido()
+        ? 'border-red-400 focus:ring-red-400/20'
+        : 'border-slate-200 hover:border-slate-300'),
   );
 }
