@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist/agenda-frontend/browser",
+  "rewrites": [
+    {
+      "source": "/agenda-api/:path*",
+      "destination": "https://107.172.193.34.nip.io/agenda-api/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
