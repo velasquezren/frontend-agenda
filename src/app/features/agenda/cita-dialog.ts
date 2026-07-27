@@ -76,57 +76,66 @@ const DURACIONES = [30, 45, 60, 90];
           idInput="cita-paciente"
         />
 
-        <!-- Selección de Fecha y Rango de Horario -->
-        <div class="grid gap-4 sm:grid-cols-3">
-          <app-field etiqueta="Fecha" para="cita-fecha" requerido>
+        <!-- Selección de Fecha y Rango de Horario con amplio espacio -->
+        <div class="space-y-5">
+          <!-- Fecha -->
+          <app-field etiqueta="Fecha de la sesión" para="cita-fecha" requerido>
             <input
               appInput
               id="cita-fecha"
               type="date"
               required
+              class="font-medium"
               [value]="fecha()"
               (input)="fecha.set($any($event.target).value)"
             />
           </app-field>
 
-          <app-field etiqueta="Hora inicio" para="cita-inicio" requerido>
-            <input
-              appInput
-              id="cita-inicio"
-              type="time"
-              step="300"
-              required
-              [value]="horaInicio()"
-              (input)="cambiarInicio($any($event.target).value)"
-            />
-          </app-field>
+          <!-- Horarios de Inicio y Fin con espacio amplio entre columnas -->
+          <div class="grid gap-5 sm:grid-cols-2">
+            <app-field etiqueta="Hora de inicio" para="cita-inicio" requerido>
+              <input
+                appInput
+                id="cita-inicio"
+                type="time"
+                step="300"
+                required
+                class="font-medium"
+                [value]="horaInicio()"
+                (input)="cambiarInicio($any($event.target).value)"
+              />
+            </app-field>
 
-          <app-field etiqueta="Hora fin" para="cita-fin" [error]="errorHoras()" requerido>
-            <input
-              appInput
-              id="cita-fin"
-              type="time"
-              step="300"
-              required
-              [invalido]="!!errorHoras()"
-              [value]="horaFin()"
-              (input)="horaFin.set($any($event.target).value)"
-            />
-          </app-field>
+            <app-field etiqueta="Hora de fin" para="cita-fin" [error]="errorHoras()" requerido>
+              <input
+                appInput
+                id="cita-fin"
+                type="time"
+                step="300"
+                required
+                class="font-medium"
+                [invalido]="!!errorHoras()"
+                [value]="horaFin()"
+                (input)="horaFin.set($any($event.target).value)"
+              />
+            </app-field>
+          </div>
         </div>
 
         <!-- Botonera interactiva de Duración -->
-        <div class="space-y-1.5">
-          <label class="block text-xs font-medium text-slate-600">Duración predefinida</label>
-          <div class="flex flex-wrap items-center gap-1.5">
+        <div class="space-y-2">
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-700">
+            Duración sugerida
+          </label>
+          <div class="flex flex-wrap items-center gap-2">
             @for (d of DURACIONES; track d) {
               <button
                 type="button"
-                class="h-8 rounded-xl border px-3 text-xs font-medium transition-all"
+                class="h-9 rounded-xl border px-3.5 text-xs font-semibold transition-all"
                 [class]="
                   duracion() === d
-                    ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                    ? 'border-slate-900 bg-slate-900 text-white shadow-sm ring-2 ring-slate-900/10'
+                    : 'border-slate-200/90 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
                 "
                 [attr.aria-pressed]="duracion() === d"
                 (click)="fijarDuracion(d)"
@@ -135,7 +144,7 @@ const DURACIONES = [30, 45, 60, 90];
               </button>
             }
             @if (duracion() > 0 && !DURACIONES.includes(duracion())) {
-              <span class="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
+              <span class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700">
                 Personalizado: {{ duracion() }} min
               </span>
             }

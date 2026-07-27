@@ -10,12 +10,12 @@ import { Component, booleanAttribute, computed, input } from '@angular/core';
 @Component({
   selector: 'app-field',
   template: `
-    <div class="space-y-1.5">
+    <div class="space-y-2">
       @if (etiqueta()) {
-        <label class="block text-sm font-medium text-slate-700" [attr.for]="para()">
+        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-700" [attr.for]="para()">
           {{ etiqueta() }}
           @if (requerido()) {
-            <span class="text-slate-400" aria-hidden="true">*</span>
+            <span class="text-red-500 font-bold" aria-hidden="true">*</span>
           }
         </label>
       }

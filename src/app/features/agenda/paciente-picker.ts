@@ -13,17 +13,22 @@ import { Spinner } from '../../ui/spinner';
   imports: [Btn, Field, InputCampo, Spinner],
   template: `
     @if (paciente(); as p) {
-      <app-field etiqueta="Paciente">
+      <app-field etiqueta="Paciente seleccionado">
         <div
-          class="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2"
+          class="flex items-center gap-3 rounded-xl border border-slate-200/90 bg-slate-50/80 p-3 shadow-sm"
         >
+          <div class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white font-semibold text-xs">
+            {{ p.nombre.charAt(0).toUpperCase() }}
+          </div>
           <span class="min-w-0 flex-1">
-            <span class="block truncate text-sm font-medium text-slate-900">{{ p.nombre }}</span>
+            <span class="block truncate text-sm font-semibold text-slate-900">{{ p.nombre }}</span>
             @if (p.telefono) {
               <span class="block truncate text-xs text-slate-500">{{ p.telefono }}</span>
             }
           </span>
-          <button type="button" appBtn="texto" tamano="sm" (click)="limpiar()">Cambiar</button>
+          <button type="button" appBtn="suave" tamano="sm" class="rounded-lg text-xs font-medium" (click)="limpiar()">
+            Cambiar paciente
+          </button>
         </div>
       </app-field>
     } @else {
