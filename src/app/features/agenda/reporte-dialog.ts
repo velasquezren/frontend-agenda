@@ -1,30 +1,54 @@
-import { Component, computed, inject, input, output, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
 
 import { ApiService } from '../../core/api.service';
-import { CitaEvento, Medico, Paciente } from '../../core/models';
+import { AuthService } from '../../core/auth.service';
+import { CitaEvento, EstadoCita, Medico } from '../../core/models';
 import { ToastService } from '../../core/toast.service';
-import { Badge } from '../../ui/badge';
 import { Btn } from '../../ui/button';
 import { Dialog } from '../../ui/dialog';
 import { Field } from '../../ui/field';
 import { InputCampo } from '../../ui/input';
+import { logoSvg } from '../../ui/logo';
 import { Spinner } from '../../ui/spinner';
 import { ESTADOS } from './estado';
 import { fechaISO } from './horario';
+import { ColumnaXlsx, construirXlsx, ValorCelda } from './xlsx';
+
+const VERDE = '#006156';
+
+/** Una sesión ya normalizada, lista para pintar, imprimir o exportar. */
+interface Linea {
+  citaId: number;
+  inicio: Date;
+  fin: Date;
+  minutos: number;
+  medico: string;
+  paciente: string;
+  estado: EstadoCita;
+  notas: string;
+}
+
+const escapar = (s: string): string =>
+  s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+
+const dosDig = (n: number) => String(n).padStart(2, '0');
+const fechaCorta = (d: Date) => `${dosDig(d.getDate())}/${dosDig(d.getMonth() + 1)}/${d.getFullYear()}`;
+const hora = (d: Date) => `${dosDig(d.getHours())}:${dosDig(d.getMinutes())}`;
+
+const DIAS_SEMANA = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 
 @Component({
   selector: 'app-reporte-dialog',
-  imports: [Dialog, Btn, Field, InputCampo, Spinner, Badge],
+  imports: [Dialog, Btn, Field, InputCampo, Spinner],
   template: `
     <app-dialog
       [abierto]="abierto()"
-      titulo="Exportar reporte de sesiones"
-      descripcion="Genera reportes filtrados por médico o paciente en Excel (CSV) o PDF"
+      titulo="Reporte de sesiones"
+      descripcion="Exporta el detalle del periodo a Excel o a PDF"
       tamano="lg"
       (cerrar)="cerrar.emit()"
     >
       <div class="space-y-5">
-        <!-- Filtros del Reporte -->
         <div class="grid gap-4 sm:grid-cols-2">
           <app-field etiqueta="Médico" para="rep-medico">
             <select
@@ -40,15 +64,18 @@ import { fechaISO } from './horario';
             </select>
           </app-field>
 
-          <app-field etiqueta="Buscar paciente (opcional)" para="rep-paciente">
-            <input
+          <app-field etiqueta="Estado" para="rep-estado">
+            <select
               appInput
-              id="rep-paciente"
-              type="text"
-              placeholder="Nombre del paciente..."
-              [value]="filtroPaciente()"
-              (input)="filtroPaciente.set($any($event.target).value)"
-            />
+              id="rep-estado"
+              [value]="estado()"
+              (change)="estado.set($any($event.target).value)"
+            >
+              <option value="todos">Todos los estados</option>
+              @for (e of CLAVES_ESTADO; track e) {
+                <option [value]="e">{{ ESTADOS[e].texto }}</option>
+              }
+            </select>
           </app-field>
 
           <app-field etiqueta="Desde" para="rep-desde">
@@ -56,8 +83,8 @@ import { fechaISO } from './horario';
               appInput
               id="rep-desde"
               type="date"
-              [value]="fechaDesde()"
-              (input)="fechaDesde.set($any($event.target).value)"
+              [value]="desde()"
+              (input)="desde.set($any($event.target).value)"
             />
           </app-field>
 
@@ -66,102 +93,109 @@ import { fechaISO } from './horario';
               appInput
               id="rep-hasta"
               type="date"
-              [value]="fechaHasta()"
-              (input)="fechaHasta.set($any($event.target).value)"
+              [value]="hasta()"
+              (input)="hasta.set($any($event.target).value)"
             />
           </app-field>
         </div>
 
-        <!-- Botón para Cargar / Previsualizar datos -->
-        <div class="flex items-center justify-between border-t border-slate-200/80 pt-4">
-          <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-xs text-slate-500">Periodo</span>
+          @for (a of ATAJOS; track a.id) {
             <button
               type="button"
-              appBtn="suave"
-              [disabled]="cargando()"
-              (click)="generarVistaPrevia()"
+              class="h-7 rounded-md border border-slate-300 bg-white px-2.5 text-xs
+                     text-slate-600 hover:bg-slate-50"
+              (click)="aplicarAtajo(a.id)"
             >
-              @if (cargando()) {
-                <app-spinner />
-              }
-              {{ cargando() ? 'Generando...' : 'Vista previa de sesiones' }}
+              {{ a.texto }}
             </button>
-          </div>
-
-          @if (citasFiltradas().length > 0) {
-            <span class="text-xs font-semibold text-slate-700">
-              {{ citasFiltradas().length }} sesión(es) encontradas
-            </span>
           }
         </div>
 
-        <!-- Tabla Previsualización / Resultados -->
-        @if (cargado()) {
-          @if (citasFiltradas().length === 0) {
-            <div class="rounded-xl border border-slate-200 bg-slate-50/50 p-6 text-center text-xs text-slate-500">
-              No se encontraron sesiones registradas en el rango de fechas seleccionado.
-            </div>
-          } @else {
-            <div class="max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white">
-              <table class="w-full text-left text-xs">
-                <thead class="sticky top-0 bg-slate-100/90 text-slate-700 backdrop-blur-sm">
-                  <tr>
-                    <th class="px-3 py-2 font-semibold">Fecha / Hora</th>
-                    <th class="px-3 py-2 font-semibold">Paciente</th>
-                    <th class="px-3 py-2 font-semibold">Médico</th>
-                    <th class="px-3 py-2 font-semibold">Estado</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100">
-                  @for (c of citasFiltradas(); track c.id) {
-                    <tr class="hover:bg-slate-50/80">
-                      <td class="px-3 py-2 whitespace-nowrap text-slate-900 font-medium">
-                        {{ formatearFechaHora(c.start, c.end) }}
-                      </td>
-                      <td class="px-3 py-2 text-slate-700">
-                        {{ c.extendedProps.pacienteNombre }}
-                      </td>
-                      <td class="px-3 py-2 text-slate-600">
-                        {{ obtenerNombreMedico(c.extendedProps.medicoId) }}
-                      </td>
-                      <td class="px-3 py-2">
-                        <app-badge [tono]="ESTADOS[c.extendedProps.estado].tono">
-                          {{ ESTADOS[c.extendedProps.estado].texto }}
-                        </app-badge>
-                      </td>
-                    </tr>
-                  }
-                </tbody>
-              </table>
+        <app-field etiqueta="Filtrar por paciente" para="rep-paciente">
+          <input
+            appInput
+            id="rep-paciente"
+            type="text"
+            placeholder="Nombre del paciente"
+            [value]="filtroPaciente()"
+            (input)="filtroPaciente.set($any($event.target).value)"
+          />
+        </app-field>
+
+        <!-- Resumen: renglones con filete, no tarjetas. -->
+        <dl class="grid grid-cols-2 border-y border-slate-200 sm:grid-cols-4">
+          @for (r of resumen(); track r.etiqueta) {
+            <div class="border-r border-slate-200 px-3 py-2.5 last:border-r-0">
+              <dt class="text-[11px] tracking-wide text-slate-500 uppercase">{{ r.etiqueta }}</dt>
+              <dd class="mt-0.5 text-lg font-semibold text-slate-900 tabular-nums">
+                {{ r.valor }}
+              </dd>
             </div>
           }
+        </dl>
+
+        @if (cargando()) {
+          <p class="flex items-center gap-2 py-6 text-sm text-slate-500">
+            <app-spinner /> Consultando sesiones…
+          </p>
+        } @else if (lineas().length === 0) {
+          <p class="border border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
+            No hay sesiones en este periodo con los filtros aplicados.
+          </p>
+        } @else {
+          <div class="max-h-72 overflow-y-auto border border-slate-200">
+            <table class="w-full border-collapse text-left text-xs">
+              <thead class="sticky top-0 bg-slate-100 text-slate-600">
+                <tr>
+                  <th class="px-3 py-2 font-medium">Fecha</th>
+                  <th class="px-3 py-2 font-medium">Horario</th>
+                  <th class="px-3 py-2 font-medium">Paciente</th>
+                  <th class="px-3 py-2 font-medium">Médico</th>
+                  <th class="px-3 py-2 text-right font-medium">Min</th>
+                  <th class="px-3 py-2 font-medium">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (l of lineas(); track l.citaId) {
+                  <tr class="border-t border-slate-100">
+                    <td class="px-3 py-1.5 whitespace-nowrap tabular-nums">
+                      {{ fechaCorta(l.inicio) }}
+                    </td>
+                    <td class="px-3 py-1.5 whitespace-nowrap text-slate-500 tabular-nums">
+                      {{ hora(l.inicio) }}–{{ hora(l.fin) }}
+                    </td>
+                    <td class="px-3 py-1.5">{{ l.paciente }}</td>
+                    <td class="px-3 py-1.5 text-slate-500">{{ l.medico }}</td>
+                    <td class="px-3 py-1.5 text-right tabular-nums">{{ l.minutos }}</td>
+                    <td class="px-3 py-1.5 text-slate-500">{{ ESTADOS[l.estado].texto }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
         }
       </div>
 
-      <button dialogFooter type="button" appBtn="suave" class="rounded-xl" (click)="cerrar.emit()">
-        Cerrar
-      </button>
-
+      <button dialogFooter type="button" appBtn="suave" (click)="cerrar.emit()">Cerrar</button>
       <button
         dialogFooter
         type="button"
         appBtn="suave"
-        class="rounded-xl"
-        [disabled]="citasFiltradas().length === 0"
-        (click)="exportarPDF()"
+        [disabled]="lineas().length === 0"
+        (click)="exportarExcel()"
       >
-        Imprimir / PDF
+        Excel (.xlsx)
       </button>
-
       <button
         dialogFooter
         type="button"
         appBtn
-        class="rounded-xl font-semibold shadow-sm"
-        [disabled]="citasFiltradas().length === 0"
-        (click)="exportarExcel()"
+        [disabled]="lineas().length === 0"
+        (click)="imprimir()"
       >
-        Exportar Excel (CSV)
+        Imprimir / PDF
       </button>
     </app-dialog>
   `,
@@ -169,336 +203,335 @@ import { fechaISO } from './horario';
 export class ReporteDialog {
   private readonly api = inject(ApiService);
   private readonly toasts = inject(ToastService);
+  private readonly auth = inject(AuthService);
 
   readonly abierto = input.required<boolean>();
   readonly medicos = input.required<Medico[]>();
-
   readonly cerrar = output<void>();
 
   protected readonly medicoId = signal('todos');
+  protected readonly estado = signal<'todos' | EstadoCita>('todos');
   protected readonly filtroPaciente = signal('');
-  protected readonly fechaDesde = signal('');
-  protected readonly fechaHasta = signal('');
+  protected readonly desde = signal('');
+  protected readonly hasta = signal('');
   protected readonly cargando = signal(false);
-  protected readonly cargado = signal(false);
-  protected readonly citasRaw = signal<CitaEvento[]>([]);
+  private readonly crudas = signal<CitaEvento[]>([]);
 
   protected readonly ESTADOS = ESTADOS;
+  protected readonly CLAVES_ESTADO = Object.keys(ESTADOS) as EstadoCita[];
+  protected readonly fechaCorta = fechaCorta;
+  protected readonly hora = hora;
 
-  protected readonly citasFiltradas = computed(() => {
+  protected readonly ATAJOS = [
+    { id: 'semana', texto: 'Esta semana' },
+    { id: 'mes', texto: 'Este mes' },
+    { id: 'anterior', texto: 'Mes anterior' },
+  ] as const;
+
+  /** Sesiones ya normalizadas y filtradas por estado y paciente. */
+  protected readonly lineas = computed<Linea[]>(() => {
     const q = this.filtroPaciente().trim().toLowerCase();
-    return this.citasRaw().filter((c) => {
-      if (!q) return true;
-      return c.extendedProps.pacienteNombre.toLowerCase().includes(q);
-    });
+    const est = this.estado();
+
+    return this.crudas()
+      .map((c): Linea => {
+        const inicio = new Date(c.start);
+        const fin = new Date(c.end);
+        return {
+          citaId: c.extendedProps.citaId,
+          inicio,
+          fin,
+          minutos: Math.round((fin.getTime() - inicio.getTime()) / 60000),
+          medico:
+            this.medicos().find((m) => m.id === c.extendedProps.medicoId)?.nombre ?? '—',
+          paciente: c.extendedProps.pacienteNombre,
+          estado: c.extendedProps.estado,
+          notas: c.extendedProps.notas ?? '',
+        };
+      })
+      .filter((l) => (est === 'todos' || l.estado === est) && (!q || l.paciente.toLowerCase().includes(q)))
+      .sort((a, b) => a.inicio.getTime() - b.inicio.getTime());
   });
 
-  constructor() {
-    const hoy = new Date();
-    const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-    const finMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
+  protected readonly resumen = computed(() => {
+    const l = this.lineas();
+    const minutos = l.reduce((n, x) => n + x.minutos, 0);
+    const cumplidas = l.filter((x) => x.estado === 'cumplida').length;
+    const canceladas = l.filter((x) => x.estado === 'cancelada').length;
+    return [
+      { etiqueta: 'Sesiones', valor: String(l.length) },
+      { etiqueta: 'Horas', valor: (minutos / 60).toFixed(1).replace('.', ',') },
+      { etiqueta: 'Cumplidas', valor: String(cumplidas) },
+      { etiqueta: 'Canceladas', valor: String(canceladas) },
+    ];
+  });
 
-    this.fechaDesde.set(fechaISO(inicioMes));
-    this.fechaHasta.set(fechaISO(finMes));
+  private readonly nombreMedico = computed(() =>
+    this.medicoId() === 'todos'
+      ? 'Todos los médicos'
+      : (this.medicos().find((m) => String(m.id) === this.medicoId())?.nombre ?? '—'),
+  );
+
+  constructor() {
+    this.aplicarAtajo('mes');
+
+    // Se recarga solo: el usuario no debería tener que pulsar "vista previa".
+    effect(() => {
+      if (!this.abierto()) return;
+      const filtros = [this.medicoId(), this.desde(), this.hasta()];
+      if (!filtros[1] || !filtros[2]) return;
+      void this.cargar();
+    });
   }
 
-  protected async generarVistaPrevia(): Promise<void> {
-    if (!this.fechaDesde() || !this.fechaHasta()) {
-      this.toasts.error('Selecciona las fechas de inicio y fin.');
-      return;
+  protected aplicarAtajo(id: (typeof this.ATAJOS)[number]['id']): void {
+    const hoy = new Date();
+    let ini: Date;
+    let fin: Date;
+
+    if (id === 'semana') {
+      const dia = (hoy.getDay() + 6) % 7; // lunes = 0
+      ini = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - dia);
+      fin = new Date(ini.getFullYear(), ini.getMonth(), ini.getDate() + 6);
+    } else if (id === 'anterior') {
+      ini = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+      fin = new Date(hoy.getFullYear(), hoy.getMonth(), 0);
+    } else {
+      ini = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+      fin = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
     }
 
+    this.desde.set(fechaISO(ini));
+    this.hasta.set(fechaISO(fin));
+  }
+
+  private async cargar(): Promise<void> {
     this.cargando.set(true);
     try {
-      const desde = new Date(`${this.fechaDesde()}T00:00:00`);
-      const hasta = new Date(`${this.fechaHasta()}T23:59:59`);
-
-      const medicosTarget =
+      const objetivo =
         this.medicoId() === 'todos'
           ? this.medicos()
           : this.medicos().filter((m) => String(m.id) === this.medicoId());
 
       const res = await Promise.all(
-        medicosTarget.map((m) => this.api.citas(m.id, desde, hasta, true)),
+        objetivo.map((m) =>
+          this.api.citas(
+            m.id,
+            new Date(`${this.desde()}T00:00:00`),
+            new Date(`${this.hasta()}T23:59:59`),
+            true,
+          ),
+        ),
       );
-
-      this.citasRaw.set(res.flat());
-      this.cargado.set(true);
+      this.crudas.set(res.flat());
     } catch {
-      this.toasts.error('No se pudieron cargar los datos para el reporte.');
+      this.toasts.error('No se pudieron cargar las sesiones del periodo.');
+      this.crudas.set([]);
     } finally {
       this.cargando.set(false);
     }
   }
 
-  protected obtenerNombreMedico(medicoId: number): string {
-    return this.medicos().find((m) => m.id === medicoId)?.nombre ?? 'Médico';
-  }
-
-  protected formatearFechaHora(startStr: string, endStr: string): string {
-    const inicio = new Date(startStr);
-    const fin = new Date(endStr);
-    const fecha = inicio.toLocaleDateString('es-ES', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-    const horaIn = inicio.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-    const horaFin = fin.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-    return `${fecha} ${horaIn} - ${horaFin}`;
-  }
+  // ------------------------------------------------------------------ Excel
 
   protected exportarExcel(): void {
-    const citas = this.citasFiltradas();
-    if (citas.length === 0) return;
+    const lineas = this.lineas();
+    if (lineas.length === 0) return;
 
-    const encabezados = [
-      'ID Sesión',
-      'Fecha',
-      'Hora Inicio',
-      'Hora Fin',
-      'Duración (min)',
-      'Médico',
-      'Paciente',
-      'Estado',
-      'Notas',
+    const columnas: ColumnaXlsx[] = [
+      { titulo: 'N.º', ancho: 6, tipo: 'numero' },
+      { titulo: 'Fecha', ancho: 11, tipo: 'fecha' },
+      { titulo: 'Día', ancho: 6 },
+      { titulo: 'Inicio', ancho: 8, tipo: 'hora' },
+      { titulo: 'Fin', ancho: 8, tipo: 'hora' },
+      { titulo: 'Minutos', ancho: 9, tipo: 'numero' },
+      { titulo: 'Paciente', ancho: 30 },
+      { titulo: 'Médico', ancho: 22 },
+      { titulo: 'Estado', ancho: 13 },
+      { titulo: 'Notas', ancho: 42 },
     ];
 
-    const filas = citas.map((c) => {
-      const inicio = new Date(c.start);
-      const fin = new Date(c.end);
-      const fecha = inicio.toLocaleDateString('es-ES', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-      });
-      const horaIn = inicio.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-      const horaFin = fin.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-      const duracion = Math.round((fin.getTime() - inicio.getTime()) / 60000);
-      const medico = this.obtenerNombreMedico(c.extendedProps.medicoId);
-      const paciente = c.extendedProps.pacienteNombre;
-      const estado = ESTADOS[c.extendedProps.estado].texto;
-      const notas = (c.extendedProps.notas || '').replace(/"/g, '""');
+    const filas: ValorCelda[][] = lineas.map((l) => [
+      l.citaId,
+      l.inicio,
+      DIAS_SEMANA[l.inicio.getDay()],
+      l.inicio,
+      l.fin,
+      l.minutos,
+      l.paciente,
+      l.medico,
+      ESTADOS[l.estado].texto,
+      l.notas,
+    ]);
 
-      return [
-        c.extendedProps.citaId,
-        fecha,
-        horaIn,
-        horaFin,
-        duracion,
-        `"${medico}"`,
-        `"${paciente}"`,
-        `"${estado}"`,
-        `"${notas}"`,
-      ].join(',');
-    });
+    const minutos = lineas.reduce((n, l) => n + l.minutos, 0);
 
-    const csvContent = '\uFEFF' + [encabezados.join(','), ...filas].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    this.descargar(
+      construirXlsx({
+        hoja: 'Sesiones',
+        titulo: 'Clínica Montalvo · Reporte de sesiones',
+        subtitulo: this.piePeriodo(),
+        columnas,
+        filas,
+        totales: [null, null, null, null, `${lineas.length} sesiones`, minutos, null, null, null, null],
+      }),
+      `sesiones_${this.desde()}_${this.hasta()}.xlsx`,
+    );
+
+    this.toasts.ok(`Excel generado con ${lineas.length} sesiones.`);
+  }
+
+  private descargar(blob: Blob, nombre: string): void {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `reporte_sesiones_${this.fechaDesde()}_al_${this.fechaHasta()}.csv`;
+    a.download = nombre;
     a.click();
     URL.revokeObjectURL(url);
-
-    this.toasts.ok('Reporte en Excel (CSV) generado con éxito.');
   }
 
-  protected exportarPDF(): void {
-    const citas = this.citasFiltradas();
-    if (citas.length === 0) return;
+  /** Líneas de contexto que van tanto en el Excel como en el PDF. */
+  private piePeriodo(): string[] {
+    const emitido = new Date();
+    return [
+      `Periodo: ${fechaCorta(new Date(`${this.desde()}T00:00:00`))} al ${fechaCorta(
+        new Date(`${this.hasta()}T00:00:00`),
+      )}`,
+      `Médico: ${this.nombreMedico()}   ·   Estado: ${
+        this.estado() === 'todos' ? 'Todos' : ESTADOS[this.estado() as EstadoCita].texto
+      }`,
+      `Emitido el ${fechaCorta(emitido)} a las ${hora(emitido)} por ${
+        this.auth.lic()?.nombre ?? '—'
+      }`,
+    ];
+  }
+
+  // -------------------------------------------------------------------- PDF
+
+  protected imprimir(): void {
+    const lineas = this.lineas();
+    if (lineas.length === 0) return;
 
     const ventana = window.open('', '_blank');
-    if (!ventana) return;
+    if (!ventana) {
+      this.toasts.error('El navegador bloqueó la ventana. Permite las ventanas emergentes.');
+      return;
+    }
 
-    const total = citas.length;
-    const programadas = citas.filter((c) => c.extendedProps.estado === 'programada').length;
-    const cumplidas = citas.filter((c) => c.extendedProps.estado === 'cumplida').length;
-    const canceladas = citas.filter((c) => c.extendedProps.estado === 'cancelada').length;
+    const minutos = lineas.reduce((n, l) => n + l.minutos, 0);
+    const [periodo, filtros, emision] = this.piePeriodo();
 
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html lang="es">
-      <head>
-        <meta charset="utf-8">
-        <title>Reporte de Sesiones Médicas - Clínica Montalvo</title>
-        <style>
-          @page { size: A4 portrait; margin: 15mm; }
-          body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-            color: #0f172a;
-            background: #ffffff;
-            margin: 0;
-            padding: 24px;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-          }
-          .header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding-bottom: 16px;
-            border-bottom: 3px solid #006156;
-            margin-bottom: 20px;
-          }
-          .brand { font-size: 22px; font-weight: 800; color: #006156; tracking: -0.5px; }
-          .sub-brand { font-size: 12px; color: #64748b; font-weight: 500; margin-top: 2px; }
-          .doc-title { text-align: right; }
-          .doc-title h2 { margin: 0; font-size: 16px; font-weight: 700; color: #0f172a; }
-          .doc-title p { margin: 3px 0 0 0; font-size: 11px; color: #64748b; }
-          
-          /* Métricas */
-          .metrics {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 12px;
-            margin-bottom: 20px;
-          }
-          .card {
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            padding: 10px 12px;
-            text-align: center;
-          }
-          .card-val { font-size: 18px; font-weight: 700; color: #0f172a; }
-          .card-lbl { font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 600; margin-top: 2px; }
+    const filas = lineas
+      .map(
+        (l, i) => `<tr>
+<td class="n">${i + 1}</td>
+<td class="nw">${fechaCorta(l.inicio)}</td>
+<td class="dia">${DIAS_SEMANA[l.inicio.getDay()]}</td>
+<td class="nw">${hora(l.inicio)}–${hora(l.fin)}</td>
+<td class="n">${l.minutos}</td>
+<td>${escapar(l.paciente)}</td>
+<td class="tenue">${escapar(l.medico)}</td>
+<td class="tenue">${ESTADOS[l.estado].texto}</td>
+<td class="notas">${escapar(l.notas)}</td>
+</tr>`,
+      )
+      .join('');
 
-          /* Tabla */
-          table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 10px; }
-          th {
-            background-color: #f1f5f9;
-            color: #334155;
-            font-weight: 700;
-            text-align: left;
-            padding: 9px 10px;
-            border-bottom: 2px solid #cbd5e1;
-            text-transform: uppercase;
-            font-size: 9.5px;
-            letter-spacing: 0.5px;
-          }
-          td {
-            padding: 8px 10px;
-            border-bottom: 1px solid #e2e8f0;
-            color: #334155;
-          }
-          tr:nth-child(even) td { background-color: #fafafa; }
-          
-          /* Badges */
-          .badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 10px;
-            font-weight: 600;
-          }
-          .badge-programada { background: #e0e7ff; color: #3730a3; }
-          .badge-cumplida { background: #d1fae5; color: #065f46; }
-          .badge-cancelada { background: #fef2f2; color: #991b1b; text-decoration: line-through; }
-          .badge-no_asistio { background: #fef3c7; color: #92400e; }
+    ventana.document.write(`<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<title>Sesiones ${this.desde()} a ${this.hasta()}</title>
+<style>
+  @page { size: A4 landscape; margin: 14mm 12mm 16mm; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; color: #0f172a; background: #fff;
+    font: 10pt/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
 
-          .footer {
-            margin-top: 30px;
-            padding-top: 12px;
-            border-top: 1px solid #e2e8f0;
-            display: flex;
-            justify-content: space-between;
-            font-size: 10px;
-            color: #94a3b8;
-          }
+  /* --- membrete --- */
+  .membrete { display: flex; align-items: flex-start; gap: 14px; }
+  .membrete svg { flex: none; margin-top: 2px; }
+  .marca { font-size: 13pt; font-weight: 700; letter-spacing: -.01em; }
+  .sub { font-size: 9pt; color: #64748b; }
+  .doc { margin-left: auto; text-align: right; }
+  .doc .tipo { font-size: 11pt; font-weight: 600; }
+  .filete { height: 2.5pt; background: ${VERDE}; margin: 9px 0 0; }
 
-          @media print {
-            body { padding: 0; }
-            .no-print { display: none; }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div>
-            <div class="brand">Clínica Montalvo</div>
-            <div class="sub-brand">Sistema de Agenda de Sesiones Médicas</div>
-          </div>
-          <div class="doc-title">
-            <h2>Reporte de Sesiones</h2>
-            <p>Período: ${this.fechaDesde()} al ${this.fechaHasta()}</p>
-          </div>
-        </div>
+  /* --- ficha de parámetros --- */
+  .ficha { display: flex; gap: 26px; padding: 8px 0 12px; font-size: 8.5pt; color: #475569; }
+  .ficha b { color: #0f172a; font-weight: 600; }
 
-        <div class="metrics">
-          <div class="card">
-            <div class="card-val">${total}</div>
-            <div class="card-lbl">Total Sesiones</div>
-          </div>
-          <div class="card">
-            <div class="card-val" style="color: #3730a3;">${programadas}</div>
-            <div class="card-lbl">Programadas</div>
-          </div>
-          <div class="card">
-            <div class="card-val" style="color: #065f46;">${cumplidas}</div>
-            <div class="card-lbl">Cumplidas</div>
-          </div>
-          <div class="card">
-            <div class="card-val" style="color: #991b1b;">${canceladas}</div>
-            <div class="card-lbl">Canceladas</div>
-          </div>
-        </div>
+  /* --- tabla --- */
+  table { width: 100%; border-collapse: collapse; }
+  thead { display: table-header-group; }
+  th {
+    background: ${VERDE}; color: #fff; font-size: 8pt; font-weight: 600;
+    letter-spacing: .04em; text-transform: uppercase;
+    text-align: left; padding: 6px 7px; white-space: nowrap;
+  }
+  td { padding: 5px 7px; border-bottom: .5pt solid #e2e8f0; font-size: 9pt; vertical-align: top; }
+  tr { break-inside: avoid; }
+  tbody tr:nth-child(even) td { background: #f8fafc; }
+  .n { text-align: right; font-variant-numeric: tabular-nums; }
+  .nw { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .dia { color: #64748b; }
+  .tenue { color: #475569; }
+  .notas { color: #475569; font-size: 8.5pt; }
 
-        <table>
-          <thead>
-            <tr>
-              <th style="width: 25%;">Fecha y Hora</th>
-              <th style="width: 25%;">Paciente</th>
-              <th style="width: 25%;">Médico</th>
-              <th style="width: 15%;">Estado</th>
-              <th style="width: 10%;">Notas</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${citas
-              .map((c) => {
-                const inicio = new Date(c.start);
-                const fin = new Date(c.end);
-                const fecha = inicio.toLocaleDateString('es-ES', {
-                  day: '2-digit',
-                  month: '2-digit',
-                  year: 'numeric',
-                });
-                const horaIn = inicio.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-                const horaFin = fin.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-                const medico = this.obtenerNombreMedico(c.extendedProps.medicoId);
-                const st = c.extendedProps.estado;
-                const estadoTexto = ESTADOS[st].texto;
-                const badgeClass = `badge-${st}`;
+  /* --- cierre --- */
+  .totales {
+    margin-top: 10px; padding-top: 7px; border-top: 1.5pt solid ${VERDE};
+    display: flex; gap: 26px; font-size: 9pt;
+  }
+  .totales span b { font-size: 11pt; }
+  .pie {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    border-top: .5pt solid #cbd5e1; padding-top: 4px;
+    font-size: 7.5pt; color: #94a3b8; display: flex; justify-content: space-between;
+  }
+</style></head>
+<body>
+  <header class="membrete">
+    ${logoSvg(VERDE, 40)}
+    <div>
+      <div class="marca">Clínica Montalvo</div>
+      <div class="sub">Agenda de sesiones médicas</div>
+    </div>
+    <div class="doc">
+      <div class="tipo">Reporte de sesiones</div>
+      <div class="sub">${escapar(periodo.replace('Periodo: ', ''))}</div>
+    </div>
+  </header>
+  <div class="filete"></div>
 
-                return `
-                <tr>
-                  <td><strong>${fecha}</strong> (${horaIn} - ${horaFin})</td>
-                  <td><strong>${c.extendedProps.pacienteNombre}</strong></td>
-                  <td>${medico}</td>
-                  <td><span class="badge ${badgeClass}">${estadoTexto}</span></td>
-                  <td>${c.extendedProps.notas || '-'}</td>
-                </tr>
-              `;
-              })
-              .join('')}
-          </tbody>
-        </table>
+  <div class="ficha">
+    <span>${escapar(filtros)}</span>
+    <span>${escapar(emision)}</span>
+  </div>
 
-        <div class="footer">
-          <span>Generado automáticamente por el Sistema de Agenda de Sesiones</span>
-          <span>Fecha de emisión: ${new Date().toLocaleString('es-ES')}</span>
-        </div>
+  <table>
+    <thead><tr>
+      <th>N.º</th><th>Fecha</th><th>Día</th><th>Horario</th><th>Min</th>
+      <th>Paciente</th><th>Médico</th><th>Estado</th><th>Notas</th>
+    </tr></thead>
+    <tbody>${filas}</tbody>
+  </table>
 
-        <script>
-          window.onload = function() { window.print(); };
-        </script>
-      </body>
-      </html>
-    `;
+  <div class="totales">
+    <span>Sesiones <b>${lineas.length}</b></span>
+    <span>Tiempo total <b>${(minutos / 60).toFixed(1).replace('.', ',')} h</b></span>
+    <span>Cumplidas <b>${lineas.filter((l) => l.estado === 'cumplida').length}</b></span>
+    <span>Canceladas <b>${lineas.filter((l) => l.estado === 'cancelada').length}</b></span>
+  </div>
 
-    ventana.document.write(htmlContent);
+  <div class="pie">
+    <span>Clínica Montalvo · documento generado automáticamente</span>
+    <span>${escapar(emision.replace('Emitido el ', ''))}</span>
+  </div>
+
+  <script>window.onload = function () { window.print(); };<\/script>
+</body></html>`);
     ventana.document.close();
   }
 }
