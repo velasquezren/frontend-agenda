@@ -317,8 +317,15 @@ export class AgendaPage {
     headerToolbar: false,
     datesSet: (info: DatesSetInfo) => this.tituloVista.set(info.view.title),
     eventSources: [{ id: FUENTE, events: (info: EventSourceFuncInfo) => this.cargarEventos(info) }],
-    eventClass: (info) =>
-      ESTADOS[(info.event.extendedProps as CitaEvento['extendedProps']).estado].clase,
+    // Ojo: esto corre para CADA evento que se dibuja, incluido el "espejo" que
+    // pinta selectMirror mientras arrastras sobre un hueco. Ese espejo no trae
+    // extendedProps, así que sin la guarda `ESTADOS[undefined].clase` lanza un
+    // TypeError dentro del render de FullCalendar y se cuelga el calendario
+    // entero: deja de responder a las pestañas de médico y al cambio de vista.
+    eventClass: (info) => {
+      const props = info.event.extendedProps as Partial<CitaEvento['extendedProps']>;
+      return props?.estado ? ESTADOS[props.estado].clase : '';
+    },
     select: (info: DateSelectInfo) => this.abrirNueva(info.start, info.end),
     dateClick: (info: { date: Date }) =>
       this.abrirNueva(info.date, new Date(info.date.getTime() + 30 * 60000)),

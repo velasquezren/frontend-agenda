@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { CalendarApi } from 'fullcalendar';
+import { CalendarApi, CalendarOptions } from 'fullcalendar';
 
 import { API_BASE } from '../../core/api-config';
 import { Medico } from '../../core/models';
@@ -115,6 +115,24 @@ describe('AgendaPage', () => {
 
     // La búsqueda con debounce puede haberse disparado; que no ensucie el verify.
     http.match((r) => r.url === `${API_BASE}/pacientes`).forEach((r) => r.flush([]));
+    http.match((r) => r.url === `${API_BASE}/citas`).forEach((r) => r.flush([]));
+  });
+
+  it('eventClass aguanta un evento sin extendedProps y no rompe el render', async () => {
+    const fixture = await montar();
+    const opciones = (fixture.componentInstance as unknown as { opciones: CalendarOptions })
+      .opciones;
+    const clase = opciones.eventClass as (info: {
+      event: { extendedProps: Record<string, unknown> };
+    }) => unknown;
+
+    // El "espejo" que dibuja selectMirror mientras arrastras llega así, sin
+    // extendedProps. Si esto lanza, revienta dentro del render de FullCalendar
+    // y el calendario deja de responder hasta recargar la página.
+    expect(() => clase({ event: { extendedProps: {} } })).not.toThrow();
+    expect(clase({ event: { extendedProps: {} } })).toBe('');
+    expect(clase({ event: { extendedProps: { estado: 'cancelada' } } })).toBe('cita-cancelada');
+
     http.match((r) => r.url === `${API_BASE}/citas`).forEach((r) => r.flush([]));
   });
 
