@@ -37,6 +37,12 @@ const TODOS = 'todos';
 const HORA_INICIO = 9;
 const HORA_FIN = 19;
 
+/**
+ * Días que el calendario ni siquiera dibuja, en la numeración de FullCalendar
+ * (0 = domingo). La clínica no atiende domingos y el servidor los rechaza.
+ */
+const DIAS_OCULTOS = [0];
+
 type Vista = 'timeGridWeek' | 'timeGridDay';
 
 @Component({
@@ -282,6 +288,7 @@ export class AgendaPage {
     initialView: 'timeGridWeek',
     locale: esLocale,
     firstDay: 1,
+    hiddenDays: DIAS_OCULTOS,
     allDaySlot: false,
     slotMinTime: `${HORA_INICIO}:00:00`,
     slotMaxTime: `${HORA_FIN}:00:00`,
@@ -399,6 +406,13 @@ export class AgendaPage {
     const siguiente = new Date().getHours() + 1;
     const dentroDeLaFranja = siguiente >= HORA_INICIO && siguiente < HORA_FIN;
     inicio.setHours(dentroDeLaFranja ? siguiente : HORA_INICIO, 0, 0, 0);
+
+    // Si el día en curso es domingo, proponemos el lunes: el servidor no
+    // aceptaría la cita y el calendario tampoco la dibujaría.
+    while (DIAS_OCULTOS.includes(inicio.getDay())) {
+      inicio.setDate(inicio.getDate() + 1);
+    }
+
     this.abrirNueva(inicio, new Date(inicio.getTime() + 30 * 60000));
   }
 

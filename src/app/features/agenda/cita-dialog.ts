@@ -40,7 +40,7 @@ const DIAS = [
   { iso: 4, letra: 'J', nombre: 'jueves' },
   { iso: 5, letra: 'V', nombre: 'viernes' },
   { iso: 6, letra: 'S', nombre: 'sábado' },
-  { iso: 7, letra: 'D', nombre: 'domingo' },
+  // Sin domingo: la clínica no atiende ese día y el servidor lo rechaza.
 ];
 
 const DURACIONES = [30, 45, 60, 90];
@@ -375,7 +375,10 @@ export class CitaDialog {
       this.notas.set(cita?.extendedProps.notas ?? '');
       this.estado.set(cita?.extendedProps.estado ?? 'programada');
       this.recurrente.set(false);
-      this.dias.set(new Set([diaISO(inicio)]));
+      // Si por lo que sea la fecha cayera en domingo, marcamos el lunes: ese
+      // día no tiene botón y la serie se iría al servidor con un día inválido.
+      const dia = diaISO(inicio);
+      this.dias.set(new Set([DIAS.some((d) => d.iso === dia) ? dia : 1]));
       this.fechaHasta.set(fechaISO(new Date(inicio.getTime() + 27 * 864e5)));
       this.error.set('');
       this.errorPaciente.set('');
