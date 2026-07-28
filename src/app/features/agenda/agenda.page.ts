@@ -43,6 +43,13 @@ const HORA_FIN = 19;
  */
 const DIAS_OCULTOS = [0];
 
+/**
+ * Id de la fuente de eventos. Hace falta para poder insertar una cita recién
+ * guardada dentro de la misma fuente: así un refetch posterior la reemplaza en
+ * vez de dejarla duplicada.
+ */
+const FUENTE = 'citas';
+
 type Vista = 'timeGridWeek' | 'timeGridDay';
 
 @Component({
@@ -221,7 +228,7 @@ type Vista = 'timeGridWeek' | 'timeGridDay';
               [cita]="citaSel()"
               [rango]="rangoSel()"
               (cerrar)="cerrarDialogo()"
-              (guardado)="refrescar()"
+              (guardado)="aplicarGuardado($event)"
             />
           }
 
@@ -309,7 +316,7 @@ export class AgendaPage {
     // el resto de la app en vez de los del tema.
     headerToolbar: false,
     datesSet: (info: DatesSetInfo) => this.tituloVista.set(info.view.title),
-    events: (info: EventSourceFuncInfo) => this.cargarEventos(info),
+    eventSources: [{ id: FUENTE, events: (info: EventSourceFuncInfo) => this.cargarEventos(info) }],
     eventClass: (info) =>
       ESTADOS[(info.event.extendedProps as CitaEvento['extendedProps']).estado].clase,
     select: (info: DateSelectInfo) => this.abrirNueva(info.start, info.end),
@@ -442,6 +449,34 @@ export class AgendaPage {
     this.dialogoAbierto.set(false);
     this.citaSel.set(null);
     this.rangoSel.set(null);
+    // Sin esto el bloque gris del arrastre se queda pintado encima del hueco y
+    // tapa la cita que acabamos de crear: parece que no se hubiera guardado.
+    this.calendario()?.getApi().unselect();
+  }
+
+  /**
+   * Pinta al instante lo que acaba de guardarse. El API ya devuelve la cita en
+   * formato de evento, así que no hace falta esperar a releer del servidor.
+   */
+  protected aplicarGuardado(eventos: CitaEvento[]): void {
+    const api = this.calendario()?.getApi();
+    if (!api) return;
+
+    api.unselect();
+    for (const ev of eventos) {
+      api.getEventById(ev.id)?.remove(); // si era una edición, fuera la vieja
+      if (this.debeVerse(ev)) {
+        api.addEvent(ev as unknown as EventInput, FUENTE);
+      }
+    }
+  }
+
+  /** Una cita solo se pinta si es del médico en pantalla y su estado toca. */
+  private debeVerse(ev: CitaEvento): boolean {
+    const delMedico =
+      this.modoTodos() || ev.extendedProps.medicoId === this.medicoSel()?.id;
+    const porEstado = this.verCanceladas() || ev.extendedProps.estado !== 'cancelada';
+    return delMedico && porEstado;
   }
 
   /** Arrastrar o redimensionar: PATCH y, si choca (409), se revierte. */

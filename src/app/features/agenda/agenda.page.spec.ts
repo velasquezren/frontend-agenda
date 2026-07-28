@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { CalendarApi } from 'fullcalendar';
 
 import { API_BASE } from '../../core/api-config';
 import { Medico } from '../../core/models';
@@ -101,13 +102,20 @@ describe('AgendaPage', () => {
     await fixture.whenStable();
     await fixture.whenStable();
 
-    // Esto es lo que el usuario dice que no pasa: que el calendario se recargue solo.
-    const recargas = http.match((r) => r.method === 'GET' && r.url === `${API_BASE}/citas`);
-    expect(recargas.length).toBeGreaterThan(0);
-    recargas.forEach((r) => r.flush([]));
+    // Lo que el usuario dice que no pasa: que la cita quede pintada sin recargar.
+    const cal = (
+      fixture.componentInstance as unknown as {
+        calendario: () => { getApi: () => CalendarApi } | undefined;
+      }
+    ).calendario();
+    const evento = cal!.getApi().getEventById('99');
+
+    expect(evento).not.toBeNull();
+    expect(evento!.title).toBe('Ana Pérez');
 
     // La búsqueda con debounce puede haberse disparado; que no ensucie el verify.
     http.match((r) => r.url === `${API_BASE}/pacientes`).forEach((r) => r.flush([]));
+    http.match((r) => r.url === `${API_BASE}/citas`).forEach((r) => r.flush([]));
   });
 
   afterEach(() => http.verify({ ignoreCancelled: true }));

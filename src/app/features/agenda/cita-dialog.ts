@@ -307,7 +307,8 @@ export class CitaDialog {
   readonly rango = input<RangoInicial | null>(null);
 
   readonly cerrar = output<void>();
-  readonly guardado = output<void>();
+  /** Las citas que acaban de guardarse, ya en formato de evento del calendario. */
+  readonly guardado = output<CitaEvento[]>();
 
   protected readonly paciente = signal<Paciente | null>(null);
   protected readonly fecha = signal('');
@@ -427,8 +428,9 @@ export class CitaDialog {
     this.guardando.set(true);
     try {
       const cita = this.cita();
+      let guardadas: CitaEvento[];
       if (cita) {
-        await this.api.editarCita(cita.extendedProps.citaId, {
+        const actualizada = await this.api.editarCita(cita.extendedProps.citaId, {
           inicio,
           fin,
           paciente_id: paciente.id,
@@ -436,10 +438,11 @@ export class CitaDialog {
           notas: this.notas() || null,
         });
         this.toasts.ok(`Cita de ${paciente.nombre} actualizada correctamente.`);
+        guardadas = [actualizada];
       } else {
-        await this.crearNueva(paciente, inicio, fin);
+        guardadas = await this.crearNueva(paciente, inicio, fin);
       }
-      this.guardado.emit();
+      this.guardado.emit(guardadas);
       this.cerrar.emit();
     } catch (e) {
       this.error.set(this.mensajeDeError(e));
@@ -448,9 +451,13 @@ export class CitaDialog {
     }
   }
 
-  private async crearNueva(paciente: Paciente, inicio: string, fin: string): Promise<void> {
+  private async crearNueva(
+    paciente: Paciente,
+    inicio: string,
+    fin: string,
+  ): Promise<CitaEvento[]> {
     if (!this.recurrente()) {
-      await this.api.crearCita({
+      const creada = await this.api.crearCita({
         medico_id: this.medico().id,
         paciente_id: paciente.id,
         inicio,
@@ -458,7 +465,7 @@ export class CitaDialog {
         notas: this.notas() || null,
       });
       this.toasts.ok(`Cita agendada para ${paciente.nombre}.`);
-      return;
+      return [creada];
     }
 
     if (this.dias().size === 0) {
@@ -482,6 +489,7 @@ export class CitaDialog {
         ? `Se agendaron ${n} citas. ${res.conflictos.length} fecha(s) se omitieron por conflicto de horario.`
         : `Serie de ${n} citas creada correctamente para ${paciente.nombre}.`,
     );
+    return res.creadas;
   }
 
   protected async cancelarCita(): Promise<void> {
@@ -502,9 +510,9 @@ export class CitaDialog {
 
     this.guardando.set(true);
     try {
-      await this.api.cancelarCita(cita.extendedProps.citaId);
+      const cancelada = await this.api.cancelarCita(cita.extendedProps.citaId);
       this.toasts.ok('Cita cancelada correctamente.');
-      this.guardado.emit();
+      this.guardado.emit([cancelada]);
       this.cerrar.emit();
     } catch (e) {
       this.error.set(this.mensajeDeError(e));
